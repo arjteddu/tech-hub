@@ -1,6 +1,8 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "db";
 import { PRISMA } from "../prisma/prisma.module";
+import { CreateCategoryDto } from "./dto/create-category.dto";
+import { CreateProductDto } from "./dto/create-product.dto";
 
 const PAGE_SIZE = 24;
 
@@ -49,5 +51,30 @@ export class CatalogService {
 
   listCategories() {
     return this.prisma.category.findMany({ orderBy: { name: "asc" } });
+  }
+
+  createCategory(dto: CreateCategoryDto) {
+    return this.prisma.category.create({ data: dto });
+  }
+
+  createProduct(dto: CreateProductDto) {
+    return this.prisma.product.create({
+      data: {
+        name: dto.name,
+        slug: dto.slug,
+        description: dto.description,
+        categoryId: dto.categoryId,
+        status: dto.status ?? "DRAFT",
+        images: dto.images ?? [],
+        variants: { create: dto.variants },
+      },
+      include: { variants: true, category: true },
+    });
+  }
+
+  async updateProductStatus(id: string, status: "DRAFT" | "ACTIVE" | "ARCHIVED") {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException("Product not found");
+    return this.prisma.product.update({ where: { id }, data: { status } });
   }
 }

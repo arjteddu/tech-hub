@@ -8,8 +8,10 @@ import {
   type RawBodyRequest,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { ApiTags } from "@nestjs/swagger";
 import { PaymentsService } from "./payments.service";
 
+@ApiTags("payments")
 @Controller("payments")
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}

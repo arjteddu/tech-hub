@@ -1,10 +1,13 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser, AuthedRequestUser } from "../common/decorators/current-user.decorator";
 import { OrdersService } from "./orders.service";
 import { PaymentsService } from "../payments/payments.service";
 import { CheckoutDto } from "./dto/checkout.dto";
 
+@ApiTags("orders")
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller("orders")
 export class OrdersController {

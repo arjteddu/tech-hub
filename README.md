@@ -31,12 +31,43 @@ cp .env.example apps/api/.env
 cp .env.example apps/worker/.env       # only DATABASE_URL/REDIS_* apply here
 cp apps/web/.env.local.example apps/web/.env.local
 pnpm db:migrate                        # applies packages/db/prisma/migrations
+pnpm db:seed                           # a couple of categories/products to browse
 pnpm dev                               # runs web (:3000), api (:4000), worker together
 ```
 
-Open `http://localhost:3000`. There's no seed script yet, so the catalog
-starts empty — add a product through Prisma Studio (`pnpm db:studio`) or
-directly against the API to see the storefront populated.
+Open `http://localhost:3000`. Every environment variable in
+`apps/api/.env` is validated on boot (`src/config/env.validation.ts`) — a
+missing or malformed one fails startup immediately with a clear message
+instead of surfacing as a confusing 500 later.
+
+### Making yourself an admin
+
+There's no signup flow for admins on purpose — the first one has to be
+promoted by hand. Register a normal account through the app, then:
+
+```sql
+UPDATE users SET role = 'ADMIN' WHERE email = 'you@example.com';
+```
+
+Admin-only endpoints (`POST /catalog/products`, `POST /catalog/categories`,
+`PATCH /catalog/products/:id/status`) are enforced by a `RolesGuard` — try
+them as a non-admin and you'll get a 403, not just a hidden button.
+
+### API docs
+
+With the api running, interactive Swagger docs are at
+`http://localhost:4000/api/docs` (raw spec at `/api/docs-json`).
+
+### Tests
+
+```bash
+pnpm test          # apps/api: AuthService + the checkout transaction
+```
+
+The checkout transaction tests are the ones worth reading if you're
+extending it — they cover the exact failure mode that matters most
+(a variant selling out between browse and checkout) and assert the
+transaction never partially reserves stock.
 
 ## What's real vs. what's a placeholder
 
@@ -65,6 +96,21 @@ are deliberately left for you to wire in:
   the frontend keeps them in `localStorage`. The architecture doc's
   recommendation (refresh token in an httpOnly cookie) is more resistant
   to XSS and is a reasonable hardening pass before launch.
+- **Media/CDN** — there's no image upload yet. `Product.images` is a plain
+  string array in the schema, but nothing writes to it and the storefront
+  renders a placeholder box. Wiring up Cloudflare R2 (or S3) is the next
+  real gap to close before this can list actual products with photos.
+- **No read caching** — Redis is only used for the BullMQ queue right now.
+  Catalog reads hit Postgres directly on every request; at higher traffic
+  this is the first thing worth caching.
+- **No admin UI** — admin actions (`POST /catalog/products`, etc.) exist
+  as API endpoints enforced by `RolesGuard`, but there's no screen to use
+  them from — Swagger's "Try it out" or `curl` is it for now.
+
+Since the last pass, the API also gained: env var validation on boot,
+`RolesGuard`-enforced admin endpoints, Swagger docs, structured JSON
+logging (pino), and a real test suite covering auth and the checkout
+transaction — see the sections above.
 
 ## Deploying
 
@@ -91,7 +137,9 @@ reference shared alongside this repo.
 | `pnpm dev` | Run web, api, and worker together |
 | `pnpm build` | Build every app (db → web → api → worker) |
 | `pnpm typecheck` / `pnpm lint` | Across every workspace package |
+| `pnpm test` | Jest tests for the api |
 | `pnpm db:migrate` | Apply Prisma migrations locally |
+| `pnpm db:seed` | Populate a couple of categories/products |
 | `pnpm db:studio` | Browse/edit data in Prisma Studio |
 
 ## Before this goes anywhere near real customers
