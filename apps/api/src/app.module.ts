@@ -5,6 +5,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { LoggerModule } from "nestjs-pino";
 import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
+import { RedisModule } from "./cache/redis.module";
 import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./auth/auth.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -12,6 +13,7 @@ import { CartModule } from "./cart/cart.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { AddressesModule } from "./addresses/addresses.module";
+import { MediaModule } from "./media/media.module";
 import { envValidationSchema } from "./config/env.validation";
 
 @Module({
@@ -29,12 +31,14 @@ import { envValidationSchema } from "./config/env.validation";
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     QueueModule,
+    RedisModule,
     AuthModule,
     CatalogModule,
     CartModule,
     OrdersModule,
     PaymentsModule,
     AddressesModule,
+    MediaModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

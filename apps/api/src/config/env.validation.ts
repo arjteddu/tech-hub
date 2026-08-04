@@ -21,4 +21,16 @@ export const envValidationSchema = Joi.object({
   RAZORPAY_KEY_ID: Joi.string().required(),
   RAZORPAY_KEY_SECRET: Joi.string().required(),
   RAZORPAY_WEBHOOK_SECRET: Joi.string().required(),
+
+  // Media storage (Cloudflare R2). Optional: the app boots and runs fine
+  // without it — only POST /media/presign needs it, and that fails with
+  // a clear error rather than blocking startup if it's unset.
+  R2_ACCOUNT_ID: Joi.string().optional(),
+  R2_ACCESS_KEY_ID: Joi.string().optional(),
+  R2_SECRET_ACCESS_KEY: Joi.string().optional(),
+  R2_BUCKET: Joi.string().optional(),
+  R2_PUBLIC_URL: Joi.string().optional(),
+
+  // Error tracking (Sentry). Optional, same reasoning.
+  SENTRY_DSN: Joi.string().optional(),
 });

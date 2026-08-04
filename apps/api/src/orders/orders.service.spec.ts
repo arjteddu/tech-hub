@@ -19,7 +19,19 @@ function makeCartItem(overrides: Partial<{ variantId: string; quantity: number; 
 function makePrismaMock() {
   const tx = {
     productVariant: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    order: { create: jest.fn().mockResolvedValue({ id: "order-1", items: [] }) },
+    order: {
+      create: jest.fn().mockResolvedValue({
+        id: "order-1",
+        status: "PENDING_PAYMENT",
+        subtotal: new Prisma.Decimal(0),
+        shipping: new Prisma.Decimal(0),
+        tax: new Prisma.Decimal(0),
+        total: new Prisma.Decimal(0),
+        currency: "INR",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        items: [],
+      }),
+    },
     cartItem: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
   };
   return {

@@ -6,12 +6,13 @@ import { useAuth } from "@/lib/auth-context";
 import type { Cart } from "@/lib/api";
 
 export default function CartPage() {
-  const { user, authFetch } = useAuth();
+  const { authFetch } = useAuth();
   const queryClient = useQueryClient();
 
+  // Works for guests too — authFetch sends X-Guest-Cart-Id when there's
+  // no access token, and the api resolves either kind of cart.
   const { data: cart, isLoading } = useQuery({
     queryKey: ["cart"],
-    enabled: !!user,
     queryFn: async () => {
       const res = await authFetch("/cart");
       if (!res.ok) throw new Error("Failed to load cart");
@@ -27,16 +28,6 @@ export default function CartPage() {
     queryClient.invalidateQueries({ queryKey: ["cart"] });
   }
 
-  if (!user) {
-    return (
-      <p>
-        <Link href="/login" className="underline">
-          Sign in
-        </Link>{" "}
-        to see your cart.
-      </p>
-    );
-  }
   if (isLoading) return <p className="text-black/50 dark:text-white/50">Loading…</p>;
   if (!cart || cart.items.length === 0) return <p>Your cart is empty.</p>;
 

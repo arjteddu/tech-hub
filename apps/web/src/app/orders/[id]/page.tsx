@@ -2,18 +2,10 @@
 
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import type { OrderDto, OrderStatus } from "shared";
 import { useAuth } from "@/lib/auth-context";
 
-type OrderItem = { id: string; productNameSnapshot: string; variantNameSnapshot: string; quantity: number; unitPrice: string };
-type OrderDetail = {
-  id: string;
-  status: string;
-  total: string;
-  currency: string;
-  items: OrderItem[];
-};
-
-const STATUS_COPY: Record<string, string> = {
+const STATUS_COPY: Record<OrderStatus, string> = {
   PENDING_PAYMENT: "Waiting for payment to be confirmed…",
   PAID: "Payment confirmed — your order is being prepared.",
   FULFILLED: "Shipped.",
@@ -34,7 +26,7 @@ export default function OrderDetailPage() {
       query.state.data?.status === "PENDING_PAYMENT" ? 3000 : false,
     queryFn: async () => {
       const res = await authFetch(`/orders/${id}`);
-      return (await res.json()) as OrderDetail;
+      return (await res.json()) as OrderDto;
     },
   });
 

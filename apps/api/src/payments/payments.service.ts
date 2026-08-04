@@ -1,7 +1,8 @@
 import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
 import Razorpay from "razorpay";
 import * as crypto from "crypto";
-import type { PrismaClient, Order } from "db";
+import type { PrismaClient } from "db";
+import type { CheckoutResponseDto, OrderDto } from "shared";
 import { PRISMA } from "../prisma/prisma.module";
 import { ORDER_QUEUE } from "../queue/queue.module";
 import type { Queue } from "bullmq";
@@ -20,7 +21,9 @@ export class PaymentsService {
   ) {}
 
   /** Opens a Razorpay order against our local order and records it as CREATED. */
-  async createRazorpayOrder(order: Order) {
+  async createRazorpayOrder(
+    order: OrderDto,
+  ): Promise<Omit<CheckoutResponseDto, "order">> {
     const amountPaise = Math.round(Number(order.total) * 100);
 
     const rpOrder = await this.razorpay.orders.create({
@@ -42,7 +45,7 @@ export class PaymentsService {
 
     return {
       razorpayOrderId: rpOrder.id,
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID as string,
       amount: amountPaise,
       currency: order.currency,
     };

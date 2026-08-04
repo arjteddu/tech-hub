@@ -6,7 +6,9 @@ import {
 } from "@nestjs/common";
 import type { PrismaClient } from "db";
 import { Prisma } from "db";
+import type { OrderDto } from "shared";
 import { PRISMA } from "../prisma/prisma.module";
+import { toOrderDto } from "./orders.mapper";
 
 @Injectable()
 export class OrdersService {
@@ -19,7 +21,7 @@ export class OrdersService {
    * (`inventoryQty >= quantity`), so two shoppers racing for the last
    * unit can't both succeed.
    */
-  async createOrderFromCart(userId: string, addressId: string) {
+  async createOrderFromCart(userId: string, addressId: string): Promise<OrderDto> {
     const address = await this.prisma.address.findFirst({
       where: { id: addressId, userId },
     });
@@ -79,24 +81,25 @@ export class OrdersService {
 
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
-      return order;
+      return toOrderDto(order);
     });
   }
 
-  async listForUser(userId: string) {
-    return this.prisma.order.findMany({
+  async listForUser(userId: string): Promise<OrderDto[]> {
+    const orders = await this.prisma.order.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      include: { items: true, payment: true },
+      include: { items: true },
     });
+    return orders.map(toOrderDto);
   }
 
-  async getForUser(userId: string, orderId: string) {
+  async getForUser(userId: string, orderId: string): Promise<OrderDto> {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
-      include: { items: true, payment: true, address: true },
+      include: { items: true },
     });
     if (!order) throw new NotFoundException("Order not found");
-    return order;
+    return toOrderDto(order);
   }
 }

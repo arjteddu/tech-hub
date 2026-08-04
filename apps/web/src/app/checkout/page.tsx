@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CheckoutResponseDto } from "shared";
 import { useAuth } from "@/lib/auth-context";
 import { loadRazorpayScript } from "@/lib/load-razorpay";
 import type { Address } from "@/lib/api";
@@ -54,7 +55,8 @@ export default function CheckoutPage() {
         body: JSON.stringify({ addressId: selectedAddressId }),
       });
       if (!res.ok) throw new Error((await res.json()).message ?? "Checkout failed");
-      const { order, razorpayOrderId, razorpayKeyId, amount, currency } = await res.json();
+      const { order, razorpayOrderId, razorpayKeyId, amount, currency } =
+        (await res.json()) as CheckoutResponseDto;
 
       await loadRazorpayScript();
       const RazorpayCheckout = window.Razorpay;

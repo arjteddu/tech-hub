@@ -1,52 +1,26 @@
+import type {
+  CategoryDto,
+  ProductVariantDto,
+  ProductDto,
+  CartItemDto,
+  CartDto,
+  AddressDto,
+  ProductListResponseDto,
+} from "shared";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 
-export type Category = { id: string; name: string; slug: string };
-
-export type ProductVariant = {
-  id: string;
-  name: string;
-  price: string;
-  compareAtPrice: string | null;
-  inventoryQty: number;
-};
-
-export type Product = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  images: string[];
-  category: Category | null;
-  variants: ProductVariant[];
-};
-
-export type CartItem = {
-  id: string;
-  variantId: string;
-  quantity: number;
-  variant: ProductVariant & { productId: string };
-};
-
-export type Cart = {
-  id: string;
-  items: CartItem[];
-};
-
-export type Address = {
-  id: string;
-  line1: string;
-  line2: string | null;
-  city: string;
-  state: string;
-  postalCode: string;
-};
-
-export type ProductListResponse = {
-  items: Product[];
-  total: number;
-  page: number;
-  pageCount: number;
-};
+// Re-exported under the names this app already uses, but the shapes
+// themselves come from `shared` — the api's mappers and this file now
+// describe the same contract, so a field rename on one side fails to
+// compile on the other instead of silently drifting.
+export type Category = CategoryDto;
+export type ProductVariant = ProductVariantDto;
+export type Product = ProductDto;
+export type CartItem = CartItemDto;
+export type Cart = CartDto;
+export type Address = AddressDto;
+export type ProductListResponse = ProductListResponseDto;
 
 // Server-side reads (catalog browsing) hit the API directly with no auth —
 // used from Server Components so product pages can be statically/ISR cached.

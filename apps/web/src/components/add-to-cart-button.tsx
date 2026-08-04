@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 
 export function AddToCartButton({ variantId }: { variantId: string }) {
-  const { user, authFetch } = useAuth();
+  const { authFetch } = useAuth();
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
+  // No auth gate — guests get a cart too, tracked by X-Guest-Cart-Id
+  // (see auth-context's authFetch) and merged into their account cart
+  // if and when they sign in.
   async function addToCart() {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
     setPending(true);
     try {
       const res = await authFetch("/cart/items", {

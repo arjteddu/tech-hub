@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProduct } from "@/lib/api";
 import { AddToCartButton } from "@/components/add-to-cart-button";
+import { ProductImage } from "@/components/product-image";
 
 export default async function ProductPage({
   params,
@@ -15,7 +16,7 @@ export default async function ProductPage({
 
   return (
     <div className="grid gap-10 sm:grid-cols-2">
-      <div className="aspect-square rounded-lg bg-black/5 dark:bg-white/10" />
+      <ProductImage src={product.images[0]} alt={product.name} className="aspect-square rounded-lg" />
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-semibold">{product.name}</h1>
         {variant && <p className="text-xl">₹{variant.price}</p>}

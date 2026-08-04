@@ -17,6 +17,7 @@ export function SiteHeader() {
           {user ? (
             <>
               <Link href="/orders">Orders</Link>
+              {user.role === "ADMIN" && <Link href="/admin">Admin</Link>}
               <button onClick={logout} className="text-black/60 dark:text-white/60">
                 Sign out ({user.email})
               </button>

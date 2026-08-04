@@ -9,14 +9,20 @@
     "build": "pnpm --filter db build && pnpm --filter web build && pnpm --filter api build && pnpm --filter worker build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter api test",
+    "test": "pnpm --filter api test && pnpm --filter worker test",
     "db:generate": "pnpm --filter db generate",
     "db:migrate": "pnpm --filter db migrate",
     "db:seed": "pnpm --filter db seed",
-    "db:studio": "pnpm --filter db studio"
+    "db:studio": "pnpm --filter db studio",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "apps/web/**/*.{ts,tsx}": "pnpm --filter web exec eslint --fix"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10",
     "typescript": "^5.6.3"
   },
   "packageManager": "pnpm@10.33.0",

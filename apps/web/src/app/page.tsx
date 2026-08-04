@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getProducts } from "@/lib/api";
+import { ProductImage } from "@/components/product-image";
 
 // Server-rendered per request rather than statically built: this page's
 // data comes from the API, which the frontend build has no guarantee of
@@ -29,7 +30,11 @@ export default async function HomePage() {
             href={`/products/${product.slug}`}
             className="group flex flex-col gap-2"
           >
-            <div className="aspect-square rounded-lg bg-black/5 dark:bg-white/10" />
+            <ProductImage
+              src={product.images[0]}
+              alt={product.name}
+              className="aspect-square rounded-lg"
+            />
             <span className="text-sm font-medium group-hover:underline">{product.name}</span>
             {price && <span className="text-sm text-black/60 dark:text-white/60">₹{price}</span>}
           </Link>

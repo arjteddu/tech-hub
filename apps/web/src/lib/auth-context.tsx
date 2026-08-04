@@ -1,12 +1,12 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
+import type { AuthResponseDto, AuthUserDto } from "shared";
 import { API_URL } from "./api";
-
-type User = { id: string; email: string; name: string | null; role: string };
+import { clearGuestCartId, getOrCreateGuestCartId } from "./guest-cart";
 
 type AuthState = {
-  user: User | null;
+  user: AuthUserDto | null;
   accessToken: string | null;
 };
 
@@ -31,29 +31,32 @@ function readStoredAuth(): AuthState {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(readStoredAuth);
 
-  function persist(next: AuthState & { refreshToken?: string }) {
+  function persist(next: AuthResponseDto) {
     setState({ user: next.user, accessToken: next.accessToken });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // The api just merged whatever was in it into the real cart —
+    // nothing left to track anonymously until the shopper logs out.
+    clearGuestCartId();
   }
 
   async function login(email: string, password: string) {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Guest-Cart-Id": getOrCreateGuestCartId() },
       body: JSON.stringify({ email, password }),
     });
     if (!res.ok) throw new Error("Invalid email or password");
-    persist(await res.json());
+    persist((await res.json()) as AuthResponseDto);
   }
 
   async function register(email: string, password: string, name?: string) {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Guest-Cart-Id": getOrCreateGuestCartId() },
       body: JSON.stringify({ email, password, name }),
     });
     if (!res.ok) throw new Error((await res.json()).message ?? "Could not create account");
-    persist(await res.json());
+    persist((await res.json()) as AuthResponseDto);
   }
 
   function logout() {
@@ -69,7 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: {
         ...init.headers,
         ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...(state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {}),
+        ...(state.accessToken
+          ? { Authorization: `Bearer ${state.accessToken}` }
+          : { "X-Guest-Cart-Id": getOrCreateGuestCartId() }),
       },
     });
   }

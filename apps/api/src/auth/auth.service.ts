@@ -7,9 +7,11 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import type { PrismaClient } from "db";
+import type { AuthResponseDto, AuthUserDto } from "shared";
 import { PRISMA } from "../prisma/prisma.module";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
+import { CartService } from "../cart/cart.service";
 
 const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL = "30d";
@@ -19,6 +21,7 @@ export class AuthService {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly jwt: JwtService,
+    private readonly cart: CartService,
   ) {}
 
   private signTokens(userId: string, role: string) {
@@ -35,7 +38,7 @@ export class AuthService {
     };
   }
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, guestCartId?: string): Promise<AuthResponseDto> {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -48,14 +51,18 @@ export class AuthService {
       data: { email: dto.email, passwordHash, name: dto.name },
     });
 
+    if (guestCartId) await this.cart.mergeGuestCartIntoUserCart(user.id, guestCartId);
+
     return { user: this.publicUser(user), ...this.signTokens(user.id, user.role) };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, guestCartId?: string): Promise<AuthResponseDto> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user?.passwordHash || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException("Invalid email or password");
     }
+
+    if (guestCartId) await this.cart.mergeGuestCartIntoUserCart(user.id, guestCartId);
 
     return { user: this.publicUser(user), ...this.signTokens(user.id, user.role) };
   }
@@ -76,7 +83,12 @@ export class AuthService {
     return this.signTokens(user.id, user.role);
   }
 
-  private publicUser(user: { id: string; email: string; name: string | null; role: string }) {
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
+  private publicUser(user: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+  }): AuthUserDto {
+    return { id: user.id, email: user.email, name: user.name, role: user.role as AuthUserDto["role"] };
   }
 }

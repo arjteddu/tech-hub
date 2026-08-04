@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import type { OrderDto } from "shared";
 import { useAuth } from "@/lib/auth-context";
-
-type OrderSummary = { id: string; status: string; total: string; currency: string; createdAt: string };
 
 export default function OrdersPage() {
   const { user, authFetch } = useAuth();
@@ -14,7 +13,7 @@ export default function OrdersPage() {
     enabled: !!user,
     queryFn: async () => {
       const res = await authFetch("/orders");
-      return (await res.json()) as OrderSummary[];
+      return (await res.json()) as OrderDto[];
     },
   });
 

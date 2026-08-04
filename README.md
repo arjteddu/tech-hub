@@ -9,12 +9,12 @@ each choice; this README is just how to run it.
 
 ```
 apps/
-  web/     Next.js 16 storefront (catalog, cart, checkout, orders)
-  api/     NestJS backend (auth, catalog, cart, orders, payments, addresses)
+  web/     Next.js 16 storefront + a minimal /admin (catalog, cart, checkout, orders)
+  api/     NestJS backend (auth, catalog, cart, orders, payments, addresses, media)
   worker/  BullMQ consumer (order confirmation emails, inventory sync)
 packages/
   db/      Prisma schema + generated client, shared by api and worker
-  shared/  Queue names and job payload types shared by api and worker
+  shared/  Queue names + the wire contract (DTOs) shared by api and web
 ```
 
 ## Prerequisites
@@ -26,9 +26,9 @@ packages/
 
 ```bash
 docker compose up -d          # Postgres on :5432, Redis on :6379
-pnpm install
+pnpm install                  # also wires up the pre-commit hook (husky)
 cp .env.example apps/api/.env
-cp .env.example apps/worker/.env       # only DATABASE_URL/REDIS_* apply here
+cp .env.example apps/worker/.env       # only DATABASE_URL/REDIS_*/RESEND_* apply here
 cp apps/web/.env.local.example apps/web/.env.local
 pnpm db:migrate                        # applies packages/db/prisma/migrations
 pnpm db:seed                           # a couple of categories/products to browse
@@ -38,7 +38,9 @@ pnpm dev                               # runs web (:3000), api (:4000), worker t
 Open `http://localhost:3000`. Every environment variable in
 `apps/api/.env` is validated on boot (`src/config/env.validation.ts`) — a
 missing or malformed one fails startup immediately with a clear message
-instead of surfacing as a confusing 500 later.
+instead of surfacing as a confusing 500 later. `R2_*` and `SENTRY_DSN` are
+optional — the app runs fine without them, only the features that need
+them (image upload, error tracking) no-op or return a clear 503 until set.
 
 ### Making yourself an admin
 
@@ -49,68 +51,107 @@ promoted by hand. Register a normal account through the app, then:
 UPDATE users SET role = 'ADMIN' WHERE email = 'you@example.com';
 ```
 
-Admin-only endpoints (`POST /catalog/products`, `POST /catalog/categories`,
-`PATCH /catalog/products/:id/status`) are enforced by a `RolesGuard` — try
-them as a non-admin and you'll get a 403, not just a hidden button.
+Sign back in and an "Admin" link appears in the header, linking to
+`/admin/products/new` and `/admin/categories/new` — real forms, including
+image upload, not just API endpoints. It's deliberately bare (no product
+listing/editing table yet) — enough to prove the write path and the
+upload flow work, not a full admin console. Every admin write is enforced
+server-side by a `RolesGuard`, independent of the UI: hit the endpoints
+directly as a non-admin and you get a 403.
 
 ### API docs
 
 With the api running, interactive Swagger docs are at
 `http://localhost:4000/api/docs` (raw spec at `/api/docs-json`).
 
+### Guest carts
+
+Cart works before sign-in — the client generates a `X-Guest-Cart-Id` and
+the api keeps that cart in Redis (7-day TTL). On login/register, whatever
+was in it merges into the account's real (Postgres) cart and the Redis key
+is deleted. Checkout still requires an account, same as most real stores.
+
+### Search
+
+Product search runs against a generated, GIN-indexed `tsvector` column
+(name weighted above description), not a substring match — see
+`packages/db/prisma/migrations/*_add_product_search` and
+`CatalogService.searchProducts`.
+
+### Caching
+
+Catalog reads (`listProducts`, `getProductBySlug`, `listCategories`) are
+cached in Redis via `CacheService`, invalidated by bumping a namespace
+version on any admin write rather than hunting down individual keys.
+Redis hiccups fail open — a cache miss falls back to Postgres, it never
+breaks the request.
+
+### Error tracking
+
+Sentry is wired into both api (`@sentry/node`, a global exception filter
+that reports 5xx only — 404s and validation errors aren't incidents) and
+web (`@sentry/nextjs`, via `instrumentation.ts` / `instrumentation-client.ts`).
+Both are no-ops until `SENTRY_DSN` (api, web-server) and
+`NEXT_PUBLIC_SENTRY_DSN` (web-client) are set. The web-side wiring targets
+current `@sentry/nextjs` conventions for Next.js 16 but wasn't verified
+against a live Sentry project in this session — double-check it once you
+have a real DSN.
+
 ### Tests
 
 ```bash
-pnpm test          # apps/api: AuthService + the checkout transaction
+pnpm test          # api: auth + the checkout transaction; worker: order-confirmation email logic
 ```
 
 The checkout transaction tests are the ones worth reading if you're
 extending it — they cover the exact failure mode that matters most
 (a variant selling out between browse and checkout) and assert the
-transaction never partially reserves stock.
+transaction never partially reserves stock. `apps/web` has no automated
+tests yet — the honest gap, see below.
+
+### Pre-commit hooks
+
+`pnpm install` wires up husky; every commit runs `eslint --fix` on staged
+web files via lint-staged (`.husky/pre-commit`). api/worker aren't
+included — their "lint" is a whole-project `tsc`, not something
+per-file-stageable, so that stays a CI/pre-push concern.
 
 ## What's real vs. what's a placeholder
 
 This scaffold was built and smoke-tested end-to-end against a live local
-Postgres/Redis: register → browse → add to cart → add address → checkout →
-Razorpay order creation → webhook → order marked PAID → confirmation job
-picked up by the worker. All of that path works as written. A few things
-are deliberately left for you to wire in:
+Postgres/Redis, repeatedly, including the full chain together in one run:
+search → anonymous browsing → guest cart → register (cart merges) →
+address → checkout → Razorpay order → webhook → order marked `PAID` →
+worker picks up the confirmation job and correctly fails on a fake Resend
+key rather than pretending it sent. What's still on you:
 
-- **Razorpay** — the checkout flow needs real `RAZORPAY_KEY_ID` /
-  `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` from your Razorpay
-  dashboard (Settings → API Keys, and Settings → Webhooks pointing at
-  `POST /api/payments/webhook`). Without them, checkout will fail at the
-  "create Razorpay order" step with a 401 from Razorpay — that's their API
-  rejecting fake credentials, not a bug in this code.
+- **Razorpay** — needs real `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` /
+  `RAZORPAY_WEBHOOK_SECRET` from your dashboard (Settings → API Keys, and
+  Settings → Webhooks pointing at `POST /api/payments/webhook`). Without
+  them, checkout fails at "create Razorpay order" with a 401 — that's
+  their API rejecting fake credentials, not a bug here.
 - **Resend** — same idea for `RESEND_API_KEY`; without a real key the
-  worker will correctly mark the confirmation-email job as failed (BullMQ
-  will retry it) rather than silently pretending it sent.
-- **Guest carts** — the architecture doc calls for guest carts in Redis;
-  this scaffold's cart is DB-backed and requires sign-in. Worth adding
-  before launch if you want browsing-without-an-account.
-- **Catalog search** — currently a plain `ILIKE` filter. `schema.prisma`
-  has a comment marking where a `tsvector` + GIN index migration would
-  slot in for ranked full-text search.
-- **Refresh-token storage** — tokens are returned in the JSON response and
-  the frontend keeps them in `localStorage`. The architecture doc's
+  worker correctly marks the confirmation-email job failed (BullMQ
+  retries it) instead of silently pretending it sent.
+- **R2** — needs real `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` /
+  `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_PUBLIC_URL` from the
+  Cloudflare dashboard. Without them, `POST /media/presign` returns a
+  clean 503, not a 500 — the admin product form's upload step will just
+  show that as an error.
+- **Sentry** — see above; the wiring exists but wasn't tested against a
+  live project.
+- **Refresh-token storage** — tokens live in the JSON response and the
+  frontend keeps them in `localStorage`. The architecture doc's
   recommendation (refresh token in an httpOnly cookie) is more resistant
   to XSS and is a reasonable hardening pass before launch.
-- **Media/CDN** — there's no image upload yet. `Product.images` is a plain
-  string array in the schema, but nothing writes to it and the storefront
-  renders a placeholder box. Wiring up Cloudflare R2 (or S3) is the next
-  real gap to close before this can list actual products with photos.
-- **No read caching** — Redis is only used for the BullMQ queue right now.
-  Catalog reads hit Postgres directly on every request; at higher traffic
-  this is the first thing worth caching.
-- **No admin UI** — admin actions (`POST /catalog/products`, etc.) exist
-  as API endpoints enforced by `RolesGuard`, but there's no screen to use
-  them from — Swagger's "Try it out" or `curl` is it for now.
-
-Since the last pass, the API also gained: env var validation on boot,
-`RolesGuard`-enforced admin endpoints, Swagger docs, structured JSON
-logging (pino), and a real test suite covering auth and the checkout
-transaction — see the sections above.
+- **`apps/web` has no automated tests** — `apps/api` and `apps/worker`
+  both do; the frontend doesn't have a test runner wired up at all yet.
+- **Admin UI is minimal on purpose** — create-only forms, no listing,
+  editing, or order management screens. The endpoints and RBAC are real;
+  the console around them isn't built.
+- **PgBouncer** isn't something to add to this repo — it's a setting you
+  turn on with whichever managed Postgres you pick (Neon/Supabase hand
+  you a pooled connection string directly).
 
 ## Deploying
 
@@ -126,6 +167,8 @@ transaction — see the sections above.
   `pnpm --filter db migrate:deploy` against it once, then on every deploy.
 - **Redis** → Upstash or any managed Redis, referenced via `REDIS_HOST` /
   `REDIS_PORT` / `REDIS_PASSWORD`.
+- **Media** → a Cloudflare R2 bucket with public access (or a custom
+  domain) for `R2_PUBLIC_URL`.
 
 Full vendor list and monthly cost estimate are in the architecture
 reference shared alongside this repo.
@@ -137,14 +180,18 @@ reference shared alongside this repo.
 | `pnpm dev` | Run web, api, and worker together |
 | `pnpm build` | Build every app (db → web → api → worker) |
 | `pnpm typecheck` / `pnpm lint` | Across every workspace package |
-| `pnpm test` | Jest tests for the api |
+| `pnpm test` | Jest tests for the api and the worker |
 | `pnpm db:migrate` | Apply Prisma migrations locally |
 | `pnpm db:seed` | Populate a couple of categories/products |
 | `pnpm db:studio` | Browse/edit data in Prisma Studio |
 
 ## Before this goes anywhere near real customers
 
-Dependency versions here (NestJS 10, Prisma 5, Next 16) were pinned to
-what installed and verified cleanly in this session — run `pnpm outdated`
-and check in particular whether Prisma has a newer major worth adopting
-before you build on top of this for real.
+Dependency versions here were pinned to what installed and verified
+cleanly in this session (NestJS 10, Prisma 5, Next 16, Sentry SDK 10) —
+run `pnpm outdated` periodically, and Dependabot is already configured
+(`.github/dependabot.yml`) to open update PRs weekly. `pnpm audit` also
+runs in CI (non-blocking) — it currently flags a couple of high-severity
+transitive advisories in `@nestjs/platform-express` and `@nestjs/swagger`'s
+own dependencies, not something fixable by bumping this repo's direct
+pins; they'll clear once those packages update upstream.

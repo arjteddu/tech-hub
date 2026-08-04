@@ -1,9 +1,11 @@
+import "./instrument"; // must be first: Sentry has to init before anything it instruments loads
 import "reflect-metadata";
-import { NestFactory } from "@nestjs/core";
+import { HttpAdapterHost, NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { Logger } from "nestjs-pino";
 import { AppModule } from "./app.module";
+import { SentryExceptionFilter } from "./common/filters/sentry-exception.filter";
 
 async function bootstrap() {
   // rawBody: true keeps the untouched request buffer around (on
@@ -26,6 +28,9 @@ async function bootstrap() {
     }),
   );
   app.setGlobalPrefix("api");
+
+  const { httpAdapter } = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new SentryExceptionFilter(httpAdapter));
 
   const swaggerDoc = SwaggerModule.createDocument(
     app,

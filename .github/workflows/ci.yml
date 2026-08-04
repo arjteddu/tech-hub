@@ -61,3 +61,10 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Non-blocking: a transitive advisory in some deep dependency
+      # shouldn't stop every merge, but it should stay visible rather
+      # than requiring someone to run this locally to notice it.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
