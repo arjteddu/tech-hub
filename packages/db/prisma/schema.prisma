@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  FULFILLED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  RAZORPAY
+  STRIPE
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum InventoryReason {
+  ORDER
+  RESTOCK
+  ADJUSTMENT
+}
+
+// ---------- Identity ----------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  phone        String?
+  role         UserRole  @default(CUSTOMER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses Address[]
+  cart      Cart?
+  orders    Order[]
+
+  @@map("users")
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  country    String   @default("IN")
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  orders Order[]
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ---------- Catalog ----------
+
+model Category {
+  id       String     @id @default(cuid())
+  name     String
+  slug     String     @unique
+  parentId String?
+  parent   Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryToCategory")
+  products Product[]
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String        @db.Text
+  categoryId  String?
+  category    Category?     @relation(fields: [categoryId], references: [id])
+  status      ProductStatus @default(DRAFT)
+  images      String[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  variants ProductVariant[]
+
+  @@index([categoryId])
+  @@index([status])
+  @@map("products")
+
+  // Full-text search: add a generated tsvector column + GIN index via a
+  // raw SQL migration (Prisma has no native tsvector type). See
+  // packages/db/prisma/migrations/.../migration.sql after `prisma migrate dev`.
+}
+
+model ProductVariant {
+  id               String   @id @default(cuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku              String   @unique
+  name             String
+  attributes       Json     @default("{}")
+  price            Decimal  @db.Decimal(10, 2)
+  compareAtPrice   Decimal? @db.Decimal(10, 2)
+  inventoryQty     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  inventoryLogs  InventoryLog[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// ---------- Cart ----------
+
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+  quantity  Int     @default(1)
+
+  @@unique([cartId, variantId])
+  @@map("cart_items")
+}
+
+// ---------- Orders & payments ----------
+
+model Order {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  addressId String
+  address   Address     @relation(fields: [addressId], references: [id])
+  status    OrderStatus @default(PENDING_PAYMENT)
+  subtotal  Decimal     @db.Decimal(10, 2)
+  shipping  Decimal     @db.Decimal(10, 2) @default(0)
+  tax       Decimal     @db.Decimal(10, 2) @default(0)
+  total     Decimal     @db.Decimal(10, 2)
+  currency  String      @default("INR")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  items         OrderItem[]
+  payment       Payment?
+  inventoryLogs InventoryLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                    String  @id @default(cuid())
+  orderId               String
+  order                 Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId             String
+  variant               ProductVariant @relation(fields: [variantId], references: [id])
+  quantity              Int
+  unitPrice             Decimal @db.Decimal(10, 2)
+  productNameSnapshot   String
+  variantNameSnapshot   String
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Payment {
+  id               String          @id @default(cuid())
+  orderId          String          @unique
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider         PaymentProvider
+  providerOrderId  String?
+  providerPaymentId String?
+  status           PaymentStatus   @default(CREATED)
+  amount           Decimal         @db.Decimal(10, 2)
+  currency         String          @default("INR")
+  rawWebhookPayload Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@map("payments")
+}
+
+// Audit trail for every stock change — order placement, manual restock,
+// or a correction. Lets you reconstruct "why is this number what it is"
+// after the fact instead of trusting a single mutable quantity column.
+model InventoryLog {
+  id        String           @id @default(cuid())
+  variantId String
+  variant   ProductVariant   @relation(fields: [variantId], references: [id])
+  delta     Int
+  reason    InventoryReason
+  orderId   String?
+  order     Order?           @relation(fields: [orderId], references: [id])
+  createdAt DateTime         @default(now())
+
+  @@index([variantId])
+  @@map("inventory_logs")
+}

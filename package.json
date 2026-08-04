@@ -1,0 +1,32 @@
+{
+  "name": "tech-hub",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n web,api,worker -c blue,green,yellow \"pnpm --filter web dev\" \"pnpm --filter api dev\" \"pnpm --filter worker dev\"",
+    "build": "pnpm --filter db build && pnpm --filter web build && pnpm --filter api build && pnpm --filter worker build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter db generate",
+    "db:migrate": "pnpm --filter db migrate",
+    "db:studio": "pnpm --filter db studio"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "msgpackr-extract",
+      "prisma",
+      "unrs-resolver"
+    ]
+  }
+}
